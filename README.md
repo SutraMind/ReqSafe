@@ -1,2 +1,2 @@
-# CompSense
-Intelligent Multi-Agent Compliance Checker
+# ReqSafe
+Intelligent Multi-Agent Requirements Compliance Checker
