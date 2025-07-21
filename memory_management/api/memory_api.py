@@ -1,7 +1,8 @@
 """
 Unified Memory API for accessing STM and LTM data.
 
-Provides REST-like interface for compliance system integration.
+Provides REST-like interface for compliance system integration with
+comprehensive error handling and structured responses.
 """
 
 import logging
@@ -13,15 +14,14 @@ from ..processors.stm_processor import STMProcessor
 from ..processors.ltm_manager import LTMManager
 from ..models.stm_entry import STMEntry, InitialAssessment, HumanFeedback
 from ..models.ltm_rule import LTMRule
+from ..utils.validators import (
+    DataValidator, ErrorHandler, DatabaseErrorHandler, 
+    ValidationError, DatabaseConnectionError, APIError
+)
 
 
 class MemoryAPIError(Exception):
     """Base exception for Memory API errors."""
-    pass
-
-
-class ValidationError(MemoryAPIError):
-    """Raised when input validation fails."""
     pass
 
 
@@ -34,25 +34,49 @@ class MemoryAPI:
     """
     Unified API for accessing Short-Term Memory (STM) and Long-Term Memory (LTM) data.
     
-    Provides structured access to memory data with proper error handling
-    and JSON response formatting as required by Requirement 6.5.
+    Provides structured access to memory data with comprehensive error handling,
+    retry logic, and JSON response formatting as required by Requirement 6.5.
     """
     
     def __init__(self, stm_processor: STMProcessor = None, ltm_manager: LTMManager = None):
         """
-        Initialize Memory API with STM and LTM processors.
+        Initialize Memory API with STM and LTM processors and error handlers.
         
         Args:
             stm_processor: STMProcessor instance (creates default if None)
             ltm_manager: LTMManager instance (creates default if None)
         """
-        self.stm_processor = stm_processor or STMProcessor()
-        self.ltm_manager = ltm_manager or LTMManager()
         self.logger = logging.getLogger(__name__)
+        self.error_handler = ErrorHandler(__name__)
+        self.db_error_handler = DatabaseErrorHandler()
+        
+        # Initialize processors with error handling
+        try:
+            self.stm_processor = stm_processor or self._initialize_stm_processor()
+            self.ltm_manager = ltm_manager or self._initialize_ltm_manager()
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Memory API: {e}")
+            raise DatabaseConnectionError(f"Memory API initialization failed: {str(e)}")
         
         # Link processors for bidirectional traceability
         if hasattr(self.ltm_manager, 'link_rule_to_stm_processor'):
             self.ltm_manager.link_rule_to_stm_processor(self.stm_processor)
+    
+    def _initialize_stm_processor(self) -> STMProcessor:
+        """Initialize STM processor with error handling."""
+        try:
+            return STMProcessor()
+        except Exception as e:
+            self.logger.error(f"Failed to initialize STM processor: {e}")
+            raise DatabaseConnectionError(f"STM processor initialization failed: {str(e)}", service="Redis")
+    
+    def _initialize_ltm_manager(self) -> LTMManager:
+        """Initialize LTM manager with error handling."""
+        try:
+            return LTMManager()
+        except Exception as e:
+            self.logger.error(f"Failed to initialize LTM manager: {e}")
+            raise DatabaseConnectionError(f"LTM manager initialization failed: {str(e)}", service="Neo4j")
     
     def _format_success_response(self, data: Any, message: str = "Success") -> Dict[str, Any]:
         """Format successful API response."""
@@ -77,44 +101,39 @@ class MemoryAPI:
         return response
     
     def _validate_scenario_id(self, scenario_id: str) -> None:
-        """Validate scenario_id format."""
-        if not scenario_id or not isinstance(scenario_id, str):
-            raise ValidationError("scenario_id must be a non-empty string")
-        
-        # Check format: {domain}_{requirement_number}_{key_concept}
-        parts = scenario_id.split('_')
-        if len(parts) < 3:
-            raise ValidationError("scenario_id must follow format: {domain}_{requirement_number}_{key_concept}")
+        """Validate scenario_id format using comprehensive validator."""
+        is_valid, errors = DataValidator.validate_scenario_id(scenario_id)
+        if not is_valid:
+            raise ValidationError(f"Invalid scenario_id: {'; '.join(errors)}", field="scenario_id")
     
     def _validate_assessment_data(self, data: Dict[str, Any]) -> None:
-        """Validate assessment data structure."""
-        required_fields = ['scenario_id', 'requirement_text', 'initial_assessment']
-        for field in required_fields:
-            if field not in data:
-                raise ValidationError(f"Missing required field: {field}")
-        
-        # Validate initial_assessment structure
-        assessment = data['initial_assessment']
-        if not isinstance(assessment, dict):
-            raise ValidationError("initial_assessment must be a dictionary")
-        
-        required_assessment_fields = ['status', 'rationale', 'recommendation']
-        for field in required_assessment_fields:
-            if field not in assessment:
-                raise ValidationError(f"Missing required field in initial_assessment: {field}")
+        """Validate assessment data structure using comprehensive validator."""
+        is_valid, errors = DataValidator.validate_assessment_data(data)
+        if not is_valid:
+            raise ValidationError(f"Invalid assessment data: {'; '.join(errors)}", details={"errors": errors})
     
     def _validate_feedback_data(self, data: Dict[str, Any]) -> None:
-        """Validate human feedback data structure."""
-        required_fields = ['decision', 'rationale', 'suggestion']
-        for field in required_fields:
-            if field not in data:
-                raise ValidationError(f"Missing required field in feedback: {field}")
+        """Validate human feedback data structure using comprehensive validator."""
+        is_valid, errors = DataValidator.validate_feedback_data(data)
+        if not is_valid:
+            raise ValidationError(f"Invalid feedback data: {'; '.join(errors)}", details={"errors": errors})
+    
+    def _execute_with_database_retry(self, operation_name: str, operation_func, *args, **kwargs):
+        """Execute database operation with retry logic and error handling."""
+        try:
+            return self.db_error_handler.execute_with_retry(operation_func, *args, **kwargs)
+        except DatabaseConnectionError as e:
+            self.logger.error(f"Database operation {operation_name} failed after retries: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error in database operation {operation_name}: {e}")
+            raise DatabaseConnectionError(f"Database operation failed: {str(e)}")
     
     # STM API Methods (Requirement 6.1)
     
     def get_stm_entry(self, scenario_id: str) -> Dict[str, Any]:
         """
-        Retrieve STM entry by scenario_id.
+        Retrieve STM entry by scenario_id with comprehensive error handling.
         
         Implements Requirement 6.1: STM retrieval API by scenario_id
         
@@ -127,29 +146,41 @@ class MemoryAPI:
         try:
             self._validate_scenario_id(scenario_id)
             
-            entry = self.stm_processor.get_entry(scenario_id)
+            # Execute with database retry logic
+            entry = self._execute_with_database_retry(
+                "get_stm_entry",
+                self.stm_processor.get_entry,
+                scenario_id
+            )
+            
             if not entry:
                 raise NotFoundError(f"STM entry not found: {scenario_id}")
             
-            # Include traceability information
-            traceability = self.stm_processor.get_traceability_info(scenario_id)
+            # Include traceability information with retry
+            traceability = self._execute_with_database_retry(
+                "get_traceability_info",
+                self.stm_processor.get_traceability_info,
+                scenario_id
+            )
             
-            return self._format_success_response({
+            return self.error_handler.create_success_response({
                 "stm_entry": entry.to_dict(),
                 "traceability": traceability
             }, f"Retrieved STM entry: {scenario_id}")
             
-        except (ValidationError, NotFoundError) as e:
-            self.logger.warning(f"STM retrieval failed: {e}")
-            return self._format_error_response(str(e), type(e).__name__.lower())
+        except ValidationError as e:
+            return self.error_handler.handle_validation_error(e, "get_stm_entry")
+        except NotFoundError as e:
+            return self.error_handler.handle_generic_error(e, "get_stm_entry", "not_found_error")
+        except DatabaseConnectionError as e:
+            return self.error_handler.handle_database_error(e, "Redis", "get_stm_entry")
         except Exception as e:
-            self.logger.error(f"Unexpected error retrieving STM entry {scenario_id}: {e}")
-            return self._format_error_response("Internal server error", "internal_error")
+            return self.error_handler.handle_generic_error(e, "get_stm_entry")
     
     def list_stm_entries(self, status: str = None, has_feedback: bool = None, 
                         limit: int = 50) -> Dict[str, Any]:
         """
-        List STM entries with optional filtering.
+        List STM entries with optional filtering and comprehensive error handling.
         
         Args:
             status: Filter by initial assessment status
@@ -160,14 +191,32 @@ class MemoryAPI:
             Dict: JSON response with list of STM entries
         """
         try:
+            # Validate limit parameter
+            if limit <= 0 or limit > 1000:
+                raise ValidationError("limit must be between 1 and 1000", field="limit")
+            
+            # Execute database operations with retry logic
             if status:
-                entries = self.stm_processor.get_entries_by_status(status)
+                entries = self._execute_with_database_retry(
+                    "get_entries_by_status",
+                    self.stm_processor.get_entries_by_status,
+                    status
+                )
             elif has_feedback is True:
-                entries = self.stm_processor.get_entries_with_feedback()
+                entries = self._execute_with_database_retry(
+                    "get_entries_with_feedback",
+                    self.stm_processor.get_entries_with_feedback
+                )
             elif has_feedback is False:
-                entries = self.stm_processor.get_entries_without_feedback()
+                entries = self._execute_with_database_retry(
+                    "get_entries_without_feedback",
+                    self.stm_processor.get_entries_without_feedback
+                )
             else:
-                entries = self.stm_processor.list_entries()
+                entries = self._execute_with_database_retry(
+                    "list_entries",
+                    self.stm_processor.list_entries
+                )
             
             # Apply limit
             entries = entries[:limit]
@@ -175,7 +224,7 @@ class MemoryAPI:
             # Convert to dict format
             entries_data = [entry.to_dict() for entry in entries]
             
-            return self._format_success_response({
+            return self.error_handler.create_success_response({
                 "entries": entries_data,
                 "count": len(entries_data),
                 "filters": {
@@ -185,24 +234,31 @@ class MemoryAPI:
                 }
             }, f"Retrieved {len(entries_data)} STM entries")
             
+        except ValidationError as e:
+            return self.error_handler.handle_validation_error(e, "list_stm_entries")
+        except DatabaseConnectionError as e:
+            return self.error_handler.handle_database_error(e, "Redis", "list_stm_entries")
         except Exception as e:
-            self.logger.error(f"Error listing STM entries: {e}")
-            return self._format_error_response("Internal server error", "internal_error")
+            return self.error_handler.handle_generic_error(e, "list_stm_entries")
     
     def get_stm_stats(self) -> Dict[str, Any]:
         """
-        Get STM statistics.
+        Get STM statistics with comprehensive error handling.
         
         Returns:
             Dict: JSON response with STM statistics
         """
         try:
-            stats = self.stm_processor.get_stats()
-            return self._format_success_response(stats, "Retrieved STM statistics")
+            stats = self._execute_with_database_retry(
+                "get_stm_stats",
+                self.stm_processor.get_stats
+            )
+            return self.error_handler.create_success_response(stats, "Retrieved STM statistics")
             
+        except DatabaseConnectionError as e:
+            return self.error_handler.handle_database_error(e, "Redis", "get_stm_stats")
         except Exception as e:
-            self.logger.error(f"Error getting STM stats: {e}")
-            return self._format_error_response("Internal server error", "internal_error")
+            return self.error_handler.handle_generic_error(e, "get_stm_stats")
     
     # LTM API Methods (Requirement 6.2)
     
@@ -210,7 +266,7 @@ class MemoryAPI:
                         keywords: List[str] = None, policy: str = None, 
                         limit: int = 10) -> Dict[str, Any]:
         """
-        Search LTM rules by concepts, keywords, and policy.
+        Search LTM rules by concepts, keywords, and policy with comprehensive error handling.
         
         Implements Requirement 6.2: LTM search API by concepts and keywords
         
@@ -225,9 +281,23 @@ class MemoryAPI:
             Dict: JSON response with matching LTM rules
         """
         try:
+            # Validate limit parameter
+            if limit <= 0 or limit > 100:
+                raise ValidationError("limit must be between 1 and 100", field="limit")
+            
+            # Validate concepts list if provided
+            if concepts is not None:
+                is_valid, errors = DataValidator.validate_concepts_list(concepts)
+                if not is_valid:
+                    raise ValidationError(f"Invalid concepts list: {'; '.join(errors)}", field="concepts")
+            
             if query:
-                # Use semantic search for natural language queries
-                scored_rules = self.ltm_manager.semantic_search_rules(query, limit)
+                # Use semantic search for natural language queries with retry
+                scored_rules = self._execute_with_database_retry(
+                    "semantic_search_rules",
+                    self.ltm_manager.semantic_search_rules,
+                    query, limit
+                )
                 rules_data = []
                 for rule, score in scored_rules:
                     rule_dict = rule.to_dict()
@@ -237,8 +307,10 @@ class MemoryAPI:
                 search_type = "semantic"
                 search_params = {"query": query, "limit": limit}
             else:
-                # Use structured search
-                rules = self.ltm_manager.search_ltm_rules(
+                # Use structured search with retry
+                rules = self._execute_with_database_retry(
+                    "search_ltm_rules",
+                    self.ltm_manager.search_ltm_rules,
                     concepts=concepts, 
                     keywords=keywords, 
                     policy=policy, 
@@ -254,16 +326,19 @@ class MemoryAPI:
                     "limit": limit
                 }
             
-            return self._format_success_response({
+            return self.error_handler.create_success_response({
                 "rules": rules_data,
                 "count": len(rules_data),
                 "search_type": search_type,
                 "search_params": search_params
             }, f"Found {len(rules_data)} matching LTM rules")
             
+        except ValidationError as e:
+            return self.error_handler.handle_validation_error(e, "search_ltm_rules")
+        except DatabaseConnectionError as e:
+            return self.error_handler.handle_database_error(e, "Neo4j", "search_ltm_rules")
         except Exception as e:
-            self.logger.error(f"Error searching LTM rules: {e}")
-            return self._format_error_response("Internal server error", "internal_error")
+            return self.error_handler.handle_generic_error(e, "search_ltm_rules")
     
     def get_ltm_rule(self, rule_id: str) -> Dict[str, Any]:
         """
@@ -551,46 +626,27 @@ class MemoryAPI:
     
     def health_check(self) -> Dict[str, Any]:
         """
-        Check health status of memory systems.
+        Check health status of memory systems with comprehensive error handling.
         
         Returns:
             Dict: JSON response with health status
         """
         try:
-            health_status = {
-                "stm_processor": "healthy",
-                "ltm_manager": "healthy",
-                "redis_connection": "unknown",
-                "neo4j_connection": "unknown"
+            # Use database error handler for comprehensive health check
+            connections = {
+                "Redis": lambda: self.stm_processor.redis_client.ping(),
+                "Neo4j": lambda: self.ltm_manager.driver.session().run("RETURN 1").consume()
             }
             
-            # Test Redis connection
-            try:
-                self.stm_processor.redis_client.ping()
-                health_status["redis_connection"] = "healthy"
-            except Exception as e:
-                health_status["redis_connection"] = f"unhealthy: {str(e)}"
+            health_status = self.db_error_handler.create_connection_health_check(connections)
             
-            # Test Neo4j connection
-            try:
-                with self.ltm_manager.driver.session() as session:
-                    session.run("RETURN 1")
-                health_status["neo4j_connection"] = "healthy"
-            except Exception as e:
-                health_status["neo4j_connection"] = f"unhealthy: {str(e)}"
-            
-            overall_status = "healthy" if all(
-                status == "healthy" for status in health_status.values()
-            ) else "degraded"
-            
-            return self._format_success_response({
-                "overall_status": overall_status,
-                "components": health_status
-            }, "Health check completed")
+            return self.error_handler.create_success_response(
+                health_status, 
+                "Health check completed"
+            )
             
         except Exception as e:
-            self.logger.error(f"Health check failed: {e}")
-            return self._format_error_response("Health check failed", "internal_error")
+            return self.error_handler.handle_generic_error(e, "health_check")
     
     def get_system_stats(self) -> Dict[str, Any]:
         """

@@ -13,6 +13,12 @@ class InitialAssessment:
     status: str
     rationale: str
     recommendation: str
+    
+    def validate(self) -> bool:
+        """Validate initial assessment data."""
+        return (bool(self.status and self.status.strip()) and
+                bool(self.rationale and self.rationale.strip()) and
+                bool(self.recommendation and self.recommendation.strip()))
 
 
 @dataclass
@@ -21,6 +27,12 @@ class HumanFeedback:
     decision: str
     rationale: str
     suggestion: str
+    
+    def validate(self) -> bool:
+        """Validate human feedback data."""
+        return (bool(self.decision and self.decision.strip()) and
+                bool(self.rationale and self.rationale.strip()) and
+                bool(self.suggestion and self.suggestion.strip()))
 
 
 @dataclass
