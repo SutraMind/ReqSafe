@@ -1,0 +1,35 @@
+## FINAL COMPLIANCE ASSESSMENT REPORT (RA_Agent) ##
+
+**Project:** E-commerce Platform SRS
+**Governing Policy:** GDPR
+**Status:** 3 Non-Compliant, 2 Partially Compliant Requirements Identified.
+
+---
+**Requirement R1:** During account signup, the user must agree to our Terms of Service, Privacy Policy, and consent to receive marketing emails about our products and partner offers by ticking a single checkbox.
+*   **Status:** Non-Compliant
+*   **Rationale:** Bundled consent violates GDPR Art. 7. Consent must be granular, specific, and freely given for distinct processing activities.
+*   **Recommendation:** Implement separate, unticked opt-in checkboxes for marketing emails and for partner offers.
+
+---
+**Requirement R2:** To improve our services, user purchase history and browsing data will be stored indefinitely for trend analysis.
+*   **Status:** Non-Compliant
+*   **Rationale:** Indefinite storage violates the storage limitation principle of GDPR Art. 5(1)(e).
+*   **Recommendation:** Define a specific retention period, e.g., "5 years after the last customer interaction," and document this in the privacy policy.
+
+---
+**Requirement R3:** Users can access their personal data through the "My Account" dashboard.
+*   **Status:** Partially Compliant
+*   **Rationale:** Fulfills the right of access (Art. 15), but fails to mention the rights to rectification (Art. 16) and erasure (Art. 17).
+*   **Recommendation:** The "My Account" dashboard should be updated to include functionality for users to access, edit, and request erasure of their personal data.
+
+---
+**Requirement R4:** All user passwords will be stored in the database using industry-standard SHA-256 hashing.
+*   **Status:** Compliant
+*   **Rationale:** Using SHA-256 hashing is a recognized technical measure for securing data at rest, aligning with the principles of security by design under GDPR Art. 32.
+*   **Recommendation:** None needed.
+
+---
+**Requirement R5:** For order fulfillment, user shipping details (name, address, phone number) will be shared with our third-party logistics partners.
+*   **Status:** Partially Compliant
+*   **Rationale:** Sharing data with partners is necessary for the performance of a contract (Art. 6(1)(b)). However, the requirement should specify that a Data Processing Agreement (DPA) is in place.
+*   **Recommendation:** Ensure Data Processing Agreements (DPAs) are in place with all logistics partners and this data sharing is clearly disclosed in the privacy policy.

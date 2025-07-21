@@ -12,3 +12,15 @@ gradio
 langchain-community 
 llama-parse
 google-generativeai
+langchain-cohere
+sentence-transformers
+faiss-cpu 
+langchain 
+langchain-community 
+langchain-openai 
+langchainhub 
+huggingface_hub
+requests
+ollama
+neo4j
+redis

@@ -1,0 +1,12 @@
+# Byte‑compiled / optimized Python files
+*.pyc
+__pycache__/
+
+# FAISS index files (for vector embeddings)
+*.faiss
+
+# Pickle data files
+*.pkl
+
+# Environment variable files
+.env

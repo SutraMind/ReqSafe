@@ -1,0 +1,16 @@
+## HUMAN EXPERT FEEDBACK ##
+
+**Reviewer:** Legal Expert
+**Date:** 2024-10-27
+
+**Overall Assessment:** The RA_Agent's report is largely correct and provides a solid baseline. The analysis of R1, R3, and R5 is accurate. However, there are two key areas that require correction and refinement based on deeper legal and technical best practices.
+
+**Feedback on R2 (Data Retention):**
+The agent correctly identified the issue with "indefinite" storage. However, the recommendation of a fixed "5 years" is too simplistic and arbitrary. A better, more defensible policy is event-driven.
+*   **Refined Suggestion for R2:** "The data retention policy should be event-based. For example: 'User data will be retained for 3 years following the user's last login or transaction. The account will be considered inactive after this period and scheduled for deletion.'"
+
+**Feedback on R4 (Password Hashing):**
+This is the most critical error in the report. The agent marked this as "Compliant," but it is not. While SHA-256 is an industry standard, using it without a salt is a known vulnerability. This requirement is ambiguous and does not represent a state-of-the-art technical measure as required by Article 32.
+*   **Decision on R4:** Change status from "Compliant" to "Partially Compliant".
+*   **Expert Rationale for R4:** A raw (unsalted) hash is vulnerable to pre-computed "rainbow table" attacks. GDPR's "state-of-the-art" security requirement implies protection against such common attack vectors.
+*   **Refined Suggestion for R4:** "The requirement must be updated to specify the use of a salted hash. For example: 'All user passwords will be stored using a salted SHA-256 hashing algorithm to ensure strong cryptographic protection.'"

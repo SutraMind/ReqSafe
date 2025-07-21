@@ -1,153 +1,138 @@
 """
-Short-Term Memory (STM) Entry data model.
-
-Represents detailed case files from compliance assessment interactions.
+STM (Short-Term Memory) Entry data model for immediate memory operations.
 """
-
-import json
-from datetime import datetime
-from typing import Dict, Any, Optional
 from dataclasses import dataclass, asdict
-from dataclasses_json import dataclass_json
+from typing import Dict, Any, Optional
+from datetime import datetime
+import json
 
 
-@dataclass_json
 @dataclass
 class InitialAssessment:
     """Initial assessment data from RA_Agent."""
     status: str
     rationale: str
     recommendation: str
-    
-    def validate(self) -> bool:
-        """Validate the initial assessment data."""
-        required_fields = ['status', 'rationale', 'recommendation']
-        for field in required_fields:
-            if not getattr(self, field) or not getattr(self, field).strip():
-                return False
-        return True
 
 
-@dataclass_json
 @dataclass
 class HumanFeedback:
     """Human expert feedback data."""
     decision: str
     rationale: str
     suggestion: str
-    
-    def validate(self) -> bool:
-        """Validate the human feedback data."""
-        required_fields = ['decision', 'rationale', 'suggestion']
-        for field in required_fields:
-            if not getattr(self, field) or not getattr(self, field).strip():
-                return False
-        return True
 
 
-@dataclass_json
 @dataclass
 class STMEntry:
     """
-    Short-Term Memory entry representing a detailed case file.
+    Data model for Short-Term Memory entries storing detailed case files.
     
-    Stores complete information about a compliance assessment interaction
-    including initial assessment, human feedback, and final status.
+    Based on design specification schema:
+    {
+      "scenario_id": "ecommerce_r1_consent",
+      "requirement_text": "During account signup, the user must agree...",
+      "initial_assessment": {
+        "status": "Non-Compliant",
+        "rationale": "Bundled consent violates GDPR Art. 7...",
+        "recommendation": "Implement separate, unticked opt-in checkboxes..."
+      },
+      "human_feedback": {
+        "decision": "No change",
+        "rationale": "Agent's analysis is correct...",
+        "suggestion": "Implement separate, unticked opt-in checkboxes..."
+      },
+      "final_status": "Non-Compliant",
+      "created_at": "2024-10-27T10:30:00Z",
+      "updated_at": "2024-10-27T11:15:00Z"
+    }
     """
     scenario_id: str
     requirement_text: str
     initial_assessment: InitialAssessment
-    human_feedback: HumanFeedback
-    final_status: str
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    human_feedback: Optional[HumanFeedback] = None
+    final_status: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     def __post_init__(self):
-        """Set timestamps if not provided."""
-        current_time = datetime.utcnow().isoformat() + 'Z'
+        """Set default timestamps if not provided."""
         if self.created_at is None:
-            self.created_at = current_time
+            self.created_at = datetime.utcnow()
         if self.updated_at is None:
-            self.updated_at = current_time
-    
-    def validate(self) -> bool:
-        """
-        Validate the STM entry data completeness and format.
-        
-        Returns:
-            bool: True if all required fields are present and valid
-        """
-        # Check required string fields
-        required_fields = ['scenario_id', 'requirement_text', 'final_status']
-        for field in required_fields:
-            if not getattr(self, field) or not getattr(self, field).strip():
-                return False
-        
-        # Validate nested objects
-        if not self.initial_assessment.validate():
-            return False
-        
-        if not self.human_feedback.validate():
-            return False
-        
-        # Validate scenario_id format: {domain}_{requirement_number}_{key_concept}
-        parts = self.scenario_id.split('_')
-        if len(parts) < 3:
-            return False
-        
-        return True
-    
-    def to_json(self) -> str:
-        """
-        Serialize STM entry to JSON string.
-        
-        Returns:
-            str: JSON representation of the STM entry
-        """
-        return self.to_json()
-    
-    @classmethod
-    def from_json(cls, json_str: str) -> 'STMEntry':
-        """
-        Deserialize STM entry from JSON string.
-        
-        Args:
-            json_str: JSON string representation
-            
-        Returns:
-            STMEntry: Deserialized STM entry object
-        """
-        return cls.from_json(json_str)
+            self.updated_at = datetime.utcnow()
     
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert STM entry to dictionary.
-        
-        Returns:
-            Dict: Dictionary representation of the STM entry
-        """
-        return asdict(self)
+        """Convert STM entry to dictionary for JSON serialization."""
+        data = asdict(self)
+        # Convert datetime to ISO string for JSON serialization
+        if self.created_at:
+            data['created_at'] = self.created_at.isoformat()
+        if self.updated_at:
+            data['updated_at'] = self.updated_at.isoformat()
+        return data
+    
+    def to_json(self) -> str:
+        """Convert STM entry to JSON string."""
+        return json.dumps(self.to_dict(), indent=2)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'STMEntry':
-        """
-        Create STM entry from dictionary.
+        """Create STM entry from dictionary."""
+        # Convert ISO strings back to datetime
+        if 'created_at' in data and isinstance(data['created_at'], str):
+            data['created_at'] = datetime.fromisoformat(data['created_at'])
+        if 'updated_at' in data and isinstance(data['updated_at'], str):
+            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
         
-        Args:
-            data: Dictionary containing STM entry data
-            
-        Returns:
-            STMEntry: STM entry object
-        """
-        # Convert nested dictionaries to dataclass objects
+        # Convert nested objects
         if 'initial_assessment' in data and isinstance(data['initial_assessment'], dict):
             data['initial_assessment'] = InitialAssessment(**data['initial_assessment'])
-        
         if 'human_feedback' in data and isinstance(data['human_feedback'], dict):
             data['human_feedback'] = HumanFeedback(**data['human_feedback'])
         
         return cls(**data)
     
-    def update_timestamp(self):
-        """Update the updated_at timestamp to current time."""
-        self.updated_at = datetime.utcnow().isoformat() + 'Z'
+    @classmethod
+    def from_json(cls, json_str: str) -> 'STMEntry':
+        """Create STM entry from JSON string."""
+        data = json.loads(json_str)
+        return cls.from_dict(data)
+    
+    def validate(self) -> bool:
+        """Validate STM entry data."""
+        # Check required fields
+        if not self.scenario_id or not self.requirement_text:
+            return False
+        
+        if not self.initial_assessment:
+            return False
+        
+        # Validate initial assessment status
+        valid_statuses = ['Compliant', 'Non-Compliant', 'Partial', 'Pending']
+        if self.initial_assessment.status not in valid_statuses:
+            return False
+        
+        # Validate final status if present
+        if self.final_status and self.final_status not in valid_statuses:
+            return False
+        
+        return True
+    
+    def update_with_feedback(self, decision: str, rationale: str, suggestion: str) -> None:
+        """Update entry with human feedback."""
+        self.human_feedback = HumanFeedback(
+            decision=decision,
+            rationale=rationale,
+            suggestion=suggestion
+        )
+        self.updated_at = datetime.utcnow()
+    
+    def set_final_status(self, status: str) -> None:
+        """Set the final compliance status."""
+        valid_statuses = ['Compliant', 'Non-Compliant', 'Partial', 'Pending']
+        if status not in valid_statuses:
+            raise ValueError(f"Invalid status: {status}. Must be one of {valid_statuses}")
+        
+        self.final_status = status
+        self.updated_at = datetime.utcnow()

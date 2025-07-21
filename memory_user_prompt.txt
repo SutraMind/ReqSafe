@@ -1,0 +1,31 @@
+Please process the following documents and generate the final JSON output containing the short-term and long-term memory entries according to your instructions.
+
+--- [START OF RA_AGENT REPORT] ---
+{content of compliance_report.txt goes here}
+--- [END OF RA_AGENT REPORT] ---
+
+--- [START OF HUMAN EXPERT FEEDBACK] ---
+{content of human_feedback.txt goes here}
+--- [END OF HUMAN EXPERT FEEDBACK] ---
+
+**Required Output Format:**
+
+{
+  "short_term_memory_entries": [
+    {
+      "scenario_id": "...",
+      "requirement_text": "...",
+      "initial_assessment": { ... },
+      "human_feedback": { ... },
+      "final_status": "..."
+    }
+  ],
+  "long_term_memory_entries": [
+    {
+      "rule_id": "...",
+      "rule_text": "...",
+      "related_concepts": [ ... ],
+      "source_scenario_id": "..."
+    }
+  ]
+}
