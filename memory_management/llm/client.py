@@ -28,7 +28,8 @@ class LLMClient:
     # Supported models for different tasks
     MODELS = {
         'qwq:32b': 'qwq:32b',
-        'gemma3:27b': 'gemma3:27b'
+        'gemma3:27b': 'gemma3:27b',
+        'deepseek-r1:8b': 'deepseek-r1:8b'
     }
     
     def __init__(self, 
@@ -106,7 +107,7 @@ class LLMClient:
     
     def generate(self, 
                  prompt: str, 
-                 model: str = 'qwq:32b',
+                 model: str = 'deepseek-r1:8b',
                  system_prompt: Optional[str] = None,
                  temperature: float = 0.1,
                  max_tokens: Optional[int] = None) -> LLMResponse:
@@ -164,7 +165,7 @@ class LLMClient:
     def extract_structured_data(self, 
                                prompt: str, 
                                expected_schema: Dict[str, Any],
-                               model: str = 'qwq:32b',
+                               model: str = 'deepseek-r1:8b',
                                system_prompt: Optional[str] = None) -> LLMResponse:
         """
         Extract structured data using LLM with JSON schema validation.
