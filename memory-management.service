@@ -1,0 +1,29 @@
+[Unit]
+Description=Memory Management Module
+After=network.target redis.service neo4j.service
+Wants=redis.service neo4j.service
+
+[Service]
+Type=simple
+User=appuser
+Group=appuser
+WorkingDirectory=/opt/memory-management
+Environment=PYTHONPATH=/opt/memory-management
+EnvironmentFile=/opt/memory-management/.env
+ExecStart=/opt/memory-management/venv/bin/python start_memory_management.py
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=memory-management
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/memory-management/logs /opt/memory-management/data
+
+[Install]
+WantedBy=multi-user.target

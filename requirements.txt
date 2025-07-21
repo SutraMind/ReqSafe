@@ -1,3 +1,4 @@
+# Core dependencies
 chromadb
 huggingface_hub 
 tiktoken
@@ -22,5 +23,33 @@ langchainhub
 huggingface_hub
 requests
 ollama
-neo4j
-redis
+
+# Memory Management Module dependencies
+neo4j>=5.0.0
+redis>=4.5.0
+psutil>=5.9.0
+
+# Configuration and deployment
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# Logging and monitoring
+structlog>=23.0.0
+prometheus-client>=0.16.0
+
+# HTTP and API
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+httpx>=0.24.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.5.0
+
+# Security
+cryptography>=41.0.0

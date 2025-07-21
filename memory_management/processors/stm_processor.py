@@ -8,6 +8,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
 from ..models.stm_entry import STMEntry, InitialAssessment, HumanFeedback
+from ..performance.redis_pool import get_redis_pool, get_cache_manager
+from ..performance.metrics_collector import get_metrics_collector, timing_decorator
 
 
 class STMProcessor:
@@ -19,7 +21,7 @@ class STMProcessor:
     """
     
     def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379, 
-                 redis_db: int = 0, redis_password: Optional[str] = None):
+                 redis_db: int = 0, redis_password: Optional[str] = None, use_pool: bool = True):
         """
         Initialize STM processor with Redis connection.
         
@@ -28,15 +30,28 @@ class STMProcessor:
             redis_port: Redis server port
             redis_db: Redis database number
             redis_password: Redis password (optional)
+            use_pool: Whether to use connection pooling (recommended)
         """
-        self.redis_client = redis.Redis(
-            host=redis_host,
-            port=redis_port,
-            db=redis_db,
-            password=redis_password,
-            decode_responses=True
-        )
         self.logger = logging.getLogger(__name__)
+        self.metrics_collector = get_metrics_collector()
+        
+        if use_pool:
+            # Use optimized connection pool
+            self.redis_pool = get_redis_pool()
+            self.redis_client = self.redis_pool.get_client()
+            self.cache_manager = get_cache_manager()
+            self.logger.info("Using Redis connection pool for STM operations")
+        else:
+            # Fallback to direct connection
+            self.redis_client = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                db=redis_db,
+                password=redis_password,
+                decode_responses=True
+            )
+            self.redis_pool = None
+            self.cache_manager = None
         
         # Test connection
         try:
@@ -46,10 +61,11 @@ class STMProcessor:
             self.logger.error(f"Failed to connect to Redis: {e}")
             raise
     
+    @timing_decorator("stm_create_entry", "STM")
     def create_entry(self, scenario_id: str, requirement_text: str, 
                     initial_assessment: InitialAssessment) -> STMEntry:
         """
-        Create a new STM entry.
+        Create a new STM entry with performance monitoring.
         
         Args:
             scenario_id: Unique identifier for the compliance scenario
@@ -74,9 +90,19 @@ class STMProcessor:
         if not entry.validate():
             raise ValueError("Invalid STM entry data")
         
-        # Store in Redis with TTL of 24 hours
+        # Store in Redis with TTL of 24 hours using optimized connection
         key = f"stm:{scenario_id}"
-        self.redis_client.setex(key, timedelta(hours=24), entry.to_json())
+        if self.redis_pool:
+            result, execution_time = self.redis_pool.execute_with_timing(
+                "stm_create",
+                self.redis_client.setex,
+                key, timedelta(hours=24), entry.to_json()
+            )
+        else:
+            self.redis_client.setex(key, timedelta(hours=24), entry.to_json())
+        
+        # Record metrics
+        self.metrics_collector.record_metric("stm_entries_created", 1, "count")
         
         self.logger.info(f"Created STM entry: {scenario_id}")
         return entry

@@ -1,0 +1,168 @@
+{
+  "success": true,
+  "extraction_summary": {
+    "input_files": {
+      "compliance_report": {
+        "requirements_found": 5,
+        "parsing_success": true
+      },
+      "human_feedback": {
+        "feedback_items_found": 2,
+        "parsing_success": true
+      }
+    },
+    "stm_processing": {
+      "total_processed": 5,
+      "successful": 3,
+      "failed": 2,
+      "with_feedback": 2
+    },
+    "ltm_processing": {
+      "entries_processed": 2,
+      "rules_created": 2,
+      "rules_failed": 0
+    },
+    "statistics": {
+      "total_requirements_processed": 5,
+      "stm_entries_created": 3,
+      "ltm_rules_created": 2,
+      "entries_with_feedback": 2,
+      "processing_success_rate": 60.0
+    },
+    "traceability": {
+      "stm_to_ltm_links": 2,
+      "bidirectional_links_created": 2
+    }
+  },
+  "stm_results": {
+    "entries": [
+      {
+        "scenario_id": "ecommerce_r1_consent",
+        "requirement_number": "R1",
+        "has_feedback": false,
+        "entry": {
+          "scenario_id": "ecommerce_r1_consent",
+          "requirement_text": "During account signup, the user must agree to our Terms of Service, Privacy Policy, and consent to receive marketing emails about our products and partner offers by ticking a single checkbox.",
+          "initial_assessment": {
+            "status": "Non-Compliant",
+            "rationale": "Bundled consent violates GDPR Art. 7. Consent must be granular, specific, and freely given for distinct processing activities.",
+            "recommendation": "Implement separate, unticked opt-in checkboxes for marketing emails and for partner offers."
+          },
+          "human_feedback": null,
+          "final_status": null,
+          "created_at": "2025-07-21T14:31:03.892574",
+          "updated_at": "2025-07-21T14:31:03.892574"
+        }
+      },
+      {
+        "scenario_id": "ecommerce_r2_data_retention",
+        "requirement_number": "R2",
+        "has_feedback": true,
+        "entry": {
+          "scenario_id": "ecommerce_r2_data_retention",
+          "requirement_text": "To improve our services, user purchase history and browsing data will be stored indefinitely for trend analysis.",
+          "initial_assessment": {
+            "status": "Non-Compliant",
+            "rationale": "Indefinite storage violates the storage limitation principle of GDPR Art. 5(1)(e).",
+            "recommendation": "Define a specific retention period, e.g., '5 years after the last customer interaction,' and document this in the privacy policy."
+          },
+          "human_feedback": null,
+          "final_status": null,
+          "created_at": "2025-07-21T14:32:18.811644",
+          "updated_at": "2025-07-21T14:32:18.811644"
+        }
+      },
+      {
+        "scenario_id": "ecommerce_r4_hashing",
+        "requirement_number": "R4",
+        "has_feedback": true,
+        "entry": {
+          "scenario_id": "ecommerce_r4_hashing",
+          "requirement_text": "All user passwords will be stored in the database using industry-standard SHA-256 hashing.",
+          "initial_assessment": {
+            "status": "Compliant",
+            "rationale": "Using SHA-256 hashing is a recognized technical measure for securing data at rest, aligning with the principles of security by design under GDPR Art. 32.",
+            "recommendation": "None needed."
+          },
+          "human_feedback": null,
+          "final_status": null,
+          "created_at": "2025-07-21T14:34:28.597971",
+          "updated_at": "2025-07-21T14:34:28.597971"
+        }
+      }
+    ],
+    "failed": [
+      {
+        "requirement_number": "R3",
+        "error": "Invalid STM entry data"
+      },
+      {
+        "requirement_number": "R5",
+        "error": "Invalid STM entry data"
+      }
+    ],
+    "statistics": {
+      "total_processed": 5,
+      "successful": 3,
+      "failed": 2,
+      "with_feedback": 2
+    }
+  },
+  "ltm_results": {
+    "rules": [
+      {
+        "rule_id": "Data Protection/GDPR Compliance_event_driven_retenti_01",
+        "source_scenario_id": "ecommerce_r2_data_retention",
+        "rule": {
+          "rule_id": "Data Protection/GDPR Compliance_event_driven_retenti_01",
+          "rule_text": "Data retention periods must be based on specific events (e.g., last user interaction) and include a defined timeframe following the event to ensure compliance with storage limitation principles.",
+          "related_concepts": [
+            "event-driven retention",
+            "data retention policy",
+            "GDPR Article 5(1)(e)",
+            "storage limitation",
+            "inactive account",
+            "data lifecycle management"
+          ],
+          "source_scenario_id": [
+            "ecommerce_r2_data_retention"
+          ],
+          "confidence_score": 0.9,
+          "version": 1,
+          "created_at": "2025-07-21T14:35:54.479474Z",
+          "updated_at": "2025-07-21T14:35:54.479474Z"
+        }
+      },
+      {
+        "rule_id": "Data Security (GDPR)_password_storage_01",
+        "source_scenario_id": "ecommerce_r4_hashing",
+        "rule": {
+          "rule_id": "Data Security (GDPR)_password_storage_01",
+          "rule_text": "All user passwords must be stored using a salted hashing algorithm to protect against precomputed rainbow table attacks, ensuring compliance with state-of-the-art security standards.",
+          "related_concepts": [
+            "password storage",
+            "cryptographic salting",
+            "hashing algorithms",
+            "rainbow table attacks",
+            "GDPR Article 32",
+            "state-of-the-art security"
+          ],
+          "source_scenario_id": [
+            "ecommerce_r4_hashing"
+          ],
+          "confidence_score": 0.9,
+          "version": 1,
+          "created_at": "2025-07-21T14:36:23.856225Z",
+          "updated_at": "2025-07-21T14:36:23.856225Z"
+        }
+      }
+    ],
+    "failed": [],
+    "statistics": {
+      "entries_processed": 2,
+      "rules_created": 2,
+      "rules_failed": 0
+    }
+  },
+  "timestamp": "2025-07-21T14:36:24.104154Z"
+}

@@ -1,319 +1,279 @@
 #!/usr/bin/env python3
 """
-Demo script for Memory Extractor orchestrator.
+Demo Script for Compliance Memory Management Module.
 
-Shows the complete end-to-end workflow from input files to memory storage.
+This script demonstrates the complete workflow:
+1. Extract data from compliance reports and human feedback
+2. Create Short-Term Memory (STM) entries
+3. Generate Long-Term Memory (LTM) rules
+4. Show traceability and statistics
 """
 
-import logging
+import os
 import sys
+import json
+import time
 from pathlib import Path
-from unittest.mock import Mock, patch
+from datetime import datetime
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Add the project root to Python path
+sys.path.insert(0, str(Path(__file__).parent))
 
-def demo_memory_extractor():
-    """Demonstrate the memory extractor with sample data."""
+from memory_management.memory_extractor import MemoryExtractor, MemoryExtractionError
+from memory_management.api.memory_api import MemoryAPI
+from memory_management.processors.traceability_service import TraceabilityService
+from memory_management.processors.stm_processor import STMProcessor
+from memory_management.processors.ltm_manager import LTMManager
+
+
+def print_banner():
+    """Print application banner."""
+    print("🧠 Compliance Memory Management Module - Demo")
     print("=" * 60)
-    print("MEMORY EXTRACTOR DEMO")
+    print("Processing compliance reports and human feedback to create")
+    print("Short-Term Memory (STM) and Long-Term Memory (LTM)")
     print("=" * 60)
-    
-    # Check if sample files exist
+
+
+def check_input_files():
+    """Check if required input files exist."""
     compliance_file = "Compliance_report_ra_agent.txt"
     feedback_file = "human_feedback.txt"
     
-    if not (Path(compliance_file).exists() and Path(feedback_file).exists()):
-        print(f"❌ Sample files not found:")
-        print(f"   - {compliance_file}: {'✓' if Path(compliance_file).exists() else '✗'}")
-        print(f"   - {feedback_file}: {'✓' if Path(feedback_file).exists() else '✗'}")
-        return False
+    files_exist = True
     
-    print(f"✓ Sample files found:")
-    print(f"   - {compliance_file}")
-    print(f"   - {feedback_file}")
-    print()
+    if not Path(compliance_file).exists():
+        print(f"❌ Missing: {compliance_file}")
+        files_exist = False
+    else:
+        print(f"✅ Found: {compliance_file}")
+    
+    if not Path(feedback_file).exists():
+        print(f"❌ Missing: {feedback_file}")
+        files_exist = False
+    else:
+        print(f"✅ Found: {feedback_file}")
+    
+    return files_exist, compliance_file, feedback_file
+
+
+def display_extraction_results(results):
+    """Display extraction results in a formatted way."""
+    print("\n📊 EXTRACTION RESULTS")
+    print("=" * 40)
+    
+    if not results.get('success'):
+        print(f"❌ Extraction failed: {results.get('error', 'Unknown error')}")
+        return
+    
+    print("✅ Extraction successful!")
+    
+    # Display summary statistics
+    summary = results.get('extraction_summary', {})
+    stats = summary.get('statistics', {})
+    
+    print(f"\n📈 Statistics:")
+    print(f"   Success Rate: {stats.get('processing_success_rate', 0):.1f}%")
+    print(f"   STM Entries Created: {stats.get('stm_entries_created', 0)}")
+    print(f"   LTM Rules Created: {stats.get('ltm_rules_created', 0)}")
+    print(f"   Entries with Feedback: {stats.get('entries_with_feedback', 0)}")
+    
+    # Display STM entries
+    stm_results = results.get('stm_results', [])
+    if stm_results:
+        print(f"\n📝 Short-Term Memory Entries ({len(stm_results)}):")
+        for i, stm_entry in enumerate(stm_results[:3], 1):  # Show first 3
+            print(f"   {i}. {stm_entry.get('scenario_id', 'Unknown')}")
+            print(f"      Status: {stm_entry.get('final_status', 'Unknown')}")
+            print(f"      Requirement: {stm_entry.get('requirement_text', '')[:80]}...")
+    
+    # Display LTM rules
+    ltm_results = results.get('ltm_results', [])
+    if ltm_results:
+        print(f"\n🧠 Long-Term Memory Rules ({len(ltm_results)}):")
+        for i, ltm_rule in enumerate(ltm_results[:3], 1):  # Show first 3
+            print(f"   {i}. {ltm_rule.get('rule_id', 'Unknown')}")
+            print(f"      Confidence: {ltm_rule.get('confidence_score', 0):.2f}")
+            print(f"      Concepts: {', '.join(ltm_rule.get('related_concepts', [])[:3])}")
+            print(f"      Rule: {ltm_rule.get('rule_text', '')[:80]}...")
+
+
+def demonstrate_api_usage(results):
+    """Demonstrate API usage with the extracted data."""
+    print("\n🔌 API DEMONSTRATION")
+    print("=" * 40)
     
     try:
-        # Import with mocked database components to avoid connection issues
-        from memory_management.memory_extractor import MemoryExtractor
-        from memory_management.processors.stm_processor import STMProcessor
-        from memory_management.processors.ltm_manager import LTMManager
-        from memory_management.processors.rule_extractor import RuleExtractor, RuleGenerationResult
-        from memory_management.models.stm_entry import STMEntry
-        from memory_management.models.ltm_rule import LTMRule
+        api = MemoryAPI()
         
-        print("📦 Creating memory extractor with mocked components...")
+        # Test health check
+        health = api.health_check()
+        print(f"System Health: {'✅ Healthy' if health.get('status') == 'success' else '❌ Unhealthy'}")
         
-        # Mock the database components to avoid actual database connections
-        with patch('memory_management.memory_extractor.STMProcessor') as mock_stm, \
-             patch('memory_management.memory_extractor.LTMManager') as mock_ltm, \
-             patch('memory_management.memory_extractor.RuleExtractor') as mock_rule:
-            
-            # Setup STM processor mock
-            mock_stm_instance = Mock(spec=STMProcessor)
-            mock_stm_instance.create_entry.return_value = Mock(
-                spec=STMEntry,
-                scenario_id="ecommerce_r1_consent",
-                to_dict=lambda: {"scenario_id": "ecommerce_r1_consent", "status": "created"}
-            )
-            mock_stm_instance.add_human_feedback.return_value = Mock(spec=STMEntry)
-            mock_stm_instance.set_final_status.return_value = Mock(spec=STMEntry)
-            mock_stm_instance.get_entry.return_value = Mock(spec=STMEntry)
-            mock_stm_instance.add_ltm_rule_link.return_value = True
-            mock_stm_instance.get_stats.return_value = {
-                'total_entries': 5,
-                'entries_with_feedback': 2,
-                'entries_without_feedback': 3
-            }
-            mock_stm.return_value = mock_stm_instance
-            
-            # Setup LTM manager mock
-            mock_ltm_instance = Mock(spec=LTMManager)
-            mock_ltm_instance.store_ltm_rule.return_value = True
-            mock_ltm_instance.get_all_rules.return_value = [
-                Mock(rule_id='GDPR_consent_01', confidence_score=0.85, related_concepts=['consent', 'gdpr']),
-                Mock(rule_id='GDPR_security_01', confidence_score=0.90, related_concepts=['security', 'hashing'])
-            ]
-            mock_ltm.return_value = mock_ltm_instance
-            
-            # Setup rule extractor mock
-            mock_rule_instance = Mock(spec=RuleExtractor)
-            def mock_extract_rule(stm_entry):
-                rule = Mock(spec=LTMRule)
-                rule.rule_id = f"GDPR_extracted_rule_01"
-                rule.rule_text = "Extracted compliance rule from human feedback"
-                rule.related_concepts = ["consent", "gdpr", "compliance"]
-                rule.source_scenario_id = [stm_entry.scenario_id]
-                rule.confidence_score = 0.85
-                rule.to_dict.return_value = {
-                    'rule_id': rule.rule_id,
-                    'rule_text': rule.rule_text,
-                    'related_concepts': rule.related_concepts,
-                    'source_scenario_id': rule.source_scenario_id,
-                    'confidence_score': rule.confidence_score
-                }
-                return RuleGenerationResult(success=True, rule=rule, confidence_score=0.85)
-            
-            mock_rule_instance.extract_rule_from_stm.side_effect = mock_extract_rule
-            mock_rule.return_value = mock_rule_instance
-            
-            # Create the memory extractor
-            extractor = MemoryExtractor()
-            print("✓ Memory extractor initialized successfully")
-            print()
-            
-            # Process the sample files
-            print("🔄 Processing sample files...")
-            result = extractor.extract_from_files(
-                compliance_report_path=compliance_file,
-                human_feedback_path=feedback_file,
-                domain="ecommerce"
-            )
-            
-            # Display results
-            print()
-            print("📊 EXTRACTION RESULTS")
-            print("-" * 40)
-            
-            if result['success']:
-                print("✅ Extraction completed successfully!")
-                
-                summary = result['extraction_summary']
-                stats = summary['statistics']
-                
-                print(f"\n📈 Statistics:")
-                print(f"   • Requirements processed: {stats['total_requirements_processed']}")
-                print(f"   • STM entries created: {stats['stm_entries_created']}")
-                print(f"   • LTM rules created: {stats['ltm_rules_created']}")
-                print(f"   • Entries with feedback: {stats['entries_with_feedback']}")
-                print(f"   • Success rate: {stats['processing_success_rate']:.1f}%")
-                
-                print(f"\n🔗 Traceability:")
-                traceability = summary['traceability']
-                print(f"   • STM to LTM links: {traceability['stm_to_ltm_links']}")
-                print(f"   • Bidirectional links: {traceability['bidirectional_links_created']}")
-                
-                # Show some sample data
-                stm_results = result['stm_results']
-                if stm_results['entries']:
-                    print(f"\n📝 Sample STM Entries:")
-                    for i, entry in enumerate(stm_results['entries'][:3]):
-                        print(f"   {i+1}. {entry['scenario_id']} (Req: {entry['requirement_number']})")
-                
-                ltm_results = result['ltm_results']
-                if ltm_results['rules']:
-                    print(f"\n🧠 Sample LTM Rules:")
-                    for i, rule in enumerate(ltm_results['rules'][:3]):
-                        print(f"   {i+1}. {rule['rule_id']} (Source: {rule['source_scenario_id']})")
-                
-            else:
-                print("❌ Extraction failed!")
-                print(f"Error: {result['error']}")
-            
-            print()
-            
-            # Get current statistics
-            print("📊 Getting current memory statistics...")
-            stats = extractor.get_extraction_statistics()
-            
-            if 'error' not in stats:
-                print("✓ Memory statistics retrieved successfully")
-                print(f"   • STM entries: {stats['stm_statistics']['total_entries']}")
-                print(f"   • LTM rules: {stats['ltm_statistics']['total_rules']}")
-                print(f"   • Average confidence: {stats['ltm_statistics']['average_confidence']:.2f}")
-            else:
-                print(f"❌ Failed to get statistics: {stats['error']}")
-            
-            print()
-            
-            # Validate results
-            if result['success']:
-                print("🔍 Validating extraction results...")
-                validation = extractor.validate_extraction_results(result)
-                
-                if validation['is_valid']:
-                    print("✅ Validation passed!")
+        # Test STM retrieval
+        stm_results = results.get('stm_results', [])
+        if stm_results:
+            first_scenario = stm_results[0].get('scenario_id')
+            if first_scenario:
+                stm_response = api.get_stm_entry(first_scenario)
+                if stm_response.get('status') == 'success':
+                    print(f"✅ STM Retrieval: Successfully retrieved {first_scenario}")
                 else:
-                    print("⚠️  Validation issues found:")
-                    for error in validation['errors']:
-                        print(f"   • Error: {error}")
-                
-                if validation['warnings']:
-                    print("⚠️  Warnings:")
-                    for warning in validation['warnings']:
-                        print(f"   • {warning}")
-                
-                if validation['recommendations']:
-                    print("💡 Recommendations:")
-                    for rec in validation['recommendations']:
-                        print(f"   • {rec}")
-            
-            print()
-            print("🔧 Closing memory extractor...")
-            extractor.close()
-            print("✓ Demo completed successfully!")
-            
-            return True
-            
-    except ImportError as e:
-        print(f"❌ Import error: {e}")
-        print("Make sure all required modules are available.")
-        return False
+                    print(f"❌ STM Retrieval: Failed to retrieve {first_scenario}")
+        
+        # Test LTM search
+        search_response = api.search_ltm_rules("GDPR", ["Compliance", "Privacy"])
+        if search_response.get('status') == 'success':
+            rules_found = len(search_response.get('data', []))
+            print(f"✅ LTM Search: Found {rules_found} rules for GDPR compliance")
+        else:
+            print(f"❌ LTM Search: Search failed")
+        
+        # Get system statistics
+        stats_response = api.get_system_stats()
+        if stats_response.get('status') == 'success':
+            stats_data = stats_response.get('data', {})
+            print(f"📊 System Stats: {stats_data.get('total_stm', 0)} STM entries, {stats_data.get('total_ltm', 0)} LTM rules")
+        
+        api.close()
+        
     except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        print(f"❌ API Demo failed: {e}")
 
 
-def demo_parsing_only():
-    """Demonstrate just the parsing components without database dependencies."""
-    print("\n" + "=" * 60)
-    print("PARSING DEMO (No Database Required)")
-    print("=" * 60)
+def demonstrate_traceability():
+    """Demonstrate traceability features."""
+    print("\n🔗 TRACEABILITY DEMONSTRATION")
+    print("=" * 40)
     
     try:
-        from memory_management.parsers.compliance_report_parser import ComplianceReportParser
-        from memory_management.parsers.human_feedback_parser import HumanFeedbackParser
+        stm_processor = STMProcessor()
+        ltm_manager = LTMManager()
+        traceability_service = TraceabilityService(stm_processor, ltm_manager)
         
-        # Check if sample files exist
-        compliance_file = "Compliance_report_ra_agent.txt"
-        feedback_file = "human_feedback.txt"
+        # Get some entries to demonstrate traceability
+        stm_stats = stm_processor.get_stats()
+        ltm_rules = ltm_manager.get_all_rules()
         
-        if not (Path(compliance_file).exists() and Path(feedback_file).exists()):
-            print("❌ Sample files not found for parsing demo")
-            return False
+        print(f"📝 STM Entries: {stm_stats.get('total_entries', 0)}")
+        print(f"🧠 LTM Rules: {len(ltm_rules)}")
         
-        print("🔍 Testing compliance report parsing...")
+        # Demonstrate traceability validation
+        integrity_result = traceability_service.validate_traceability_integrity()
+        if integrity_result.get('is_valid'):
+            print("✅ Traceability Integrity: All links are valid")
+        else:
+            errors = integrity_result.get('errors', [])
+            print(f"⚠️  Traceability Issues: {len(errors)} problems found")
         
-        # Mock the LLM components to avoid external dependencies
-        with patch('memory_management.parsers.compliance_report_parser.LLMClient') as mock_llm_client, \
-             patch('memory_management.parsers.human_feedback_parser.LLMClient') as mock_llm_client2:
-            
-            # Setup mock LLM responses
-            mock_client_instance = Mock()
-            mock_client_instance.extract_structured_data.return_value = Mock(
-                success=True,
-                content='{"requirements": [{"requirement_number": "R1", "requirement_text": "Test requirement", "status": "Non-Compliant", "rationale": "Test rationale", "recommendation": "Test recommendation"}]}'
-            )
-            mock_llm_client.return_value = mock_client_instance
-            mock_llm_client2.return_value = mock_client_instance
-            
-            # Test compliance report parsing
-            compliance_parser = ComplianceReportParser()
-            parsed_report = compliance_parser.parse_report_file(compliance_file)
-            
-            if parsed_report.parsing_success:
-                print(f"✅ Compliance report parsed successfully!")
-                print(f"   • Found {len(parsed_report.requirements)} requirements")
-                
-                # Show first requirement
-                if parsed_report.requirements:
-                    req = parsed_report.requirements[0]
-                    print(f"   • Sample: {req.requirement_number} - {req.status}")
-            else:
-                print(f"❌ Compliance report parsing failed: {parsed_report.error_message}")
-            
-            print("\n🔍 Testing human feedback parsing...")
-            
-            # Setup mock for feedback parsing
-            mock_client_instance.extract_structured_data.return_value = Mock(
-                success=True,
-                content='{"feedback_items": [{"requirement_reference": "R1", "decision": "No change", "rationale": "Test rationale", "suggestion": "Test suggestion"}]}'
-            )
-            
-            # Test human feedback parsing
-            feedback_parser = HumanFeedbackParser()
-            parsed_feedback = feedback_parser.parse_feedback_file(feedback_file)
-            
-            if parsed_feedback.parsing_success:
-                print(f"✅ Human feedback parsed successfully!")
-                print(f"   • Found {len(parsed_feedback.feedback_items)} feedback items")
-                
-                # Show first feedback item
-                if parsed_feedback.feedback_items:
-                    item = parsed_feedback.feedback_items[0]
-                    print(f"   • Sample: {item.requirement_reference} - {item.decision}")
-            else:
-                print(f"❌ Human feedback parsing failed: {parsed_feedback.error_message}")
-            
-            print("\n✓ Parsing demo completed!")
-            return True
-            
+        ltm_manager.close()
+        
     except Exception as e:
-        print(f"❌ Parsing demo error: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        print(f"❌ Traceability demo failed: {e}")
+
+
+def save_results_to_file(results, filename="memory_extraction_results.json"):
+    """Save extraction results to a JSON file."""
+    try:
+        # Convert datetime objects to strings for JSON serialization
+        def json_serializer(obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, default=json_serializer, ensure_ascii=False)
+        
+        print(f"💾 Results saved to: {filename}")
+        
+    except Exception as e:
+        print(f"❌ Failed to save results: {e}")
+
+
+def main():
+    """Main execution function."""
+    print_banner()
+    
+    # Step 1: Check input files
+    print("\n🔍 CHECKING INPUT FILES")
+    print("-" * 30)
+    files_exist, compliance_file, feedback_file = check_input_files()
+    
+    if not files_exist:
+        print("\n❌ Required input files are missing!")
+        print("Please ensure the following files exist:")
+        print("  - Compliance_report_ra_agent.txt")
+        print("  - human_feedback.txt")
+        return 1
+    
+    # Step 2: Initialize memory extractor
+    print("\n🚀 INITIALIZING MEMORY EXTRACTOR")
+    print("-" * 40)
+    
+    try:
+        memory_extractor = MemoryExtractor()
+        print("✅ Memory extractor initialized successfully")
+    except MemoryExtractionError as e:
+        print(f"❌ Failed to initialize memory extractor: {e}")
+        print("\nPlease ensure Redis and Neo4j are running:")
+        print("  Redis: docker run -d --name redis-memory -p 6379:6379 redis:latest")
+        print("  Neo4j: docker run -d --name neo4j-memory -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password123 neo4j:latest")
+        return 1
+    
+    # Step 3: Extract memory from files
+    print("\n⚙️  EXTRACTING MEMORY FROM FILES")
+    print("-" * 40)
+    
+    start_time = time.time()
+    
+    try:
+        results = memory_extractor.extract_from_files(
+            compliance_report_path=compliance_file,
+            human_feedback_path=feedback_file,
+            domain="ecommerce"
+        )
+        
+        extraction_time = time.time() - start_time
+        print(f"⏱️  Extraction completed in {extraction_time:.2f} seconds")
+        
+    except Exception as e:
+        print(f"❌ Extraction failed: {e}")
+        return 1
+    
+    # Step 4: Display results
+    display_extraction_results(results)
+    
+    # Step 5: Save results
+    print("\n💾 SAVING RESULTS")
+    print("-" * 20)
+    save_results_to_file(results)
+    
+    # Step 6: Demonstrate API usage
+    if results.get('success'):
+        demonstrate_api_usage(results)
+        demonstrate_traceability()
+    
+    # Step 7: Final summary
+    print("\n🎉 PROCESSING COMPLETE")
+    print("=" * 30)
+    
+    if results.get('success'):
+        print("✅ Memory extraction successful!")
+        print("📊 Check the results above and in memory_extraction_results.json")
+        print("🔌 Memory data is now available via the API")
+        print("🧠 Short-term and long-term memories have been created")
+    else:
+        print("❌ Memory extraction failed!")
+        print("Please check the error messages above")
+    
+    # Cleanup
+    try:
+        memory_extractor.close()
+    except:
+        pass
+    
+    return 0 if results.get('success') else 1
 
 
 if __name__ == "__main__":
-    print("🚀 Starting Memory Extractor Demo")
-    print()
-    
-    # Run the main demo
-    success1 = demo_memory_extractor()
-    
-    # Run the parsing-only demo
-    success2 = demo_parsing_only()
-    
-    print("\n" + "=" * 60)
-    print("DEMO SUMMARY")
-    print("=" * 60)
-    print(f"Memory Extractor Demo: {'✅ SUCCESS' if success1 else '❌ FAILED'}")
-    print(f"Parsing Demo: {'✅ SUCCESS' if success2 else '❌ FAILED'}")
-    
-    if success1 and success2:
-        print("\n🎉 All demos completed successfully!")
-        print("\nNext steps:")
-        print("• Run integration tests: python -m pytest test_memory_extractor_integration.py")
-        print("• Check the memory_management/memory_extractor.py for the main orchestrator")
-        print("• Use MemoryExtractor.process_sample_data() to process existing files")
-        sys.exit(0)
-    else:
-        print("\n⚠️  Some demos failed. Check the error messages above.")
-        sys.exit(1)
+    sys.exit(main())

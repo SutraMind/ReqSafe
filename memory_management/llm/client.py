@@ -29,7 +29,7 @@ class LLMClient:
     MODELS = {
         'qwq:32b': 'qwq:32b',
         'gemma3:27b': 'gemma3:27b',
-        'deepseek-r1:8b': 'deepseek-r1:8b'
+        'deepseek-r1:8b': 'qwq:32b'
     }
     
     def __init__(self, 

@@ -14,6 +14,8 @@ from datetime import datetime
 
 from ..models.ltm_rule import LTMRule
 from ..llm.client import LLMClient
+from ..performance.neo4j_optimizer import get_neo4j_optimizer
+from ..performance.metrics_collector import get_metrics_collector, timing_decorator
 
 
 class LTMManager:
@@ -26,7 +28,7 @@ class LTMManager:
     
     def __init__(self, uri: str = None, username: str = None, password: str = None):
         """
-        Initialize LTM Manager with Neo4j connection.
+        Initialize LTM Manager with Neo4j connection and performance optimizations.
         
         Args:
             uri: Neo4j database URI (defaults to env var NEO4J_URI)
@@ -40,9 +42,13 @@ class LTMManager:
         self.driver: Optional[Driver] = None
         self.llm_client = LLMClient()
         self.logger = logging.getLogger(__name__)
+        self.metrics_collector = get_metrics_collector()
         
         self._connect()
         self._create_schema()
+        
+        # Initialize Neo4j optimizer with our driver
+        self.optimizer = get_neo4j_optimizer(self.driver)
     
     def _connect(self) -> None:
         """Establish connection to Neo4j database."""
@@ -211,10 +217,11 @@ class LTMManager:
             self.logger.error(f"Failed to retrieve LTM rule {rule_id}: {e}")
             return None
     
+    @timing_decorator("ltm_search_rules", "LTM")
     def search_ltm_rules(self, concepts: List[str] = None, keywords: List[str] = None, 
                         policy: str = None, limit: int = 10) -> List[LTMRule]:
         """
-        Search LTM rules by concepts, keywords, and policy.
+        Search LTM rules by concepts, keywords, and policy with optimization.
         
         Args:
             concepts: List of concepts to match
@@ -226,61 +233,44 @@ class LTMManager:
             List of matching LTMRule objects
         """
         try:
-            with self.driver.session() as session:
-                # Build dynamic query based on search criteria
-                where_clauses = []
-                params = {'limit': limit}
-                
-                if concepts:
-                    where_clauses.append("ANY(concept IN $concepts WHERE concept IN [c.name])")
-                    params['concepts'] = concepts
-                
-                if keywords:
-                    keyword_conditions = []
-                    for i, keyword in enumerate(keywords):
-                        keyword_conditions.append(f"r.rule_text CONTAINS $keyword_{i}")
-                        params[f'keyword_{i}'] = keyword
-                    where_clauses.append(f"({' OR '.join(keyword_conditions)})")
-                
-                if policy:
-                    where_clauses.append("p.name = $policy")
-                    params['policy'] = policy
-                
-                where_clause = " AND ".join(where_clauses) if where_clauses else "true"
-                
-                query = f"""
-                MATCH (r:Rule)
-                OPTIONAL MATCH (r)-[:RELATES_TO]->(c:Concept)
-                OPTIONAL MATCH (r)-[:DERIVED_FROM]->(s:Scenario)
-                OPTIONAL MATCH (p:Policy)-[:GOVERNS]->(r)
-                WHERE {where_clause}
-                WITH r, collect(DISTINCT c.name) as concepts, collect(DISTINCT s.scenario_id) as scenarios
-                ORDER BY r.confidence_score DESC, r.created_at DESC
-                LIMIT $limit
-                RETURN r, concepts, scenarios
-                """
-                
-                results = session.run(query, params)
-                rules = []
-                
-                for record in results:
-                    rule_data = record['r']
-                    rule = LTMRule(
-                        rule_id=rule_data['rule_id'],
-                        rule_text=rule_data['rule_text'],
-                        related_concepts=record['concepts'] or [],
-                        source_scenario_id=record['scenarios'] or [],
-                        confidence_score=rule_data.get('confidence_score', 0.0),
-                        version=rule_data.get('version', 1),
-                        created_at=rule_data.get('created_at'),
-                        updated_at=rule_data.get('updated_at')
-                    )
-                    rules.append(rule)
-                
-                return rules
+            # Use optimized query from Neo4j optimizer
+            query, params = self.optimizer.get_optimized_rule_search_query(
+                concepts=concepts, keywords=keywords, policy=policy
+            )
+            params['limit'] = limit
+            
+            # Generate cache key for this search
+            cache_key = f"rule_search_{hash(str(sorted((concepts or []))) + str(sorted((keywords or []))) + str(policy or ''))}"
+            
+            # Execute optimized query with caching
+            results, execution_time = self.optimizer.execute_optimized_query(
+                query, params, cache_key=cache_key, cache_ttl=300
+            )
+            
+            # Record performance metrics
+            self.metrics_collector.record_timing("ltm_search_query", execution_time, "LTM", True)
+            
+            rules = []
+            for record in results:
+                rule_data = record['r']
+                rule = LTMRule(
+                    rule_id=rule_data['rule_id'],
+                    rule_text=rule_data['rule_text'],
+                    related_concepts=record.get('concepts', []) or [],
+                    source_scenario_id=record.get('scenarios', []) or [],
+                    confidence_score=rule_data.get('confidence_score', 0.0),
+                    version=rule_data.get('version', 1),
+                    created_at=rule_data.get('created_at'),
+                    updated_at=rule_data.get('updated_at')
+                )
+                rules.append(rule)
+            
+            self.metrics_collector.record_metric("ltm_rules_found", len(rules), "count")
+            return rules
                 
         except Exception as e:
             self.logger.error(f"Failed to search LTM rules: {e}")
+            self.metrics_collector.record_timing("ltm_search_query", 0, "LTM", False)
             return []
     
     def semantic_search_rules(self, query_text: str, limit: int = 10) -> List[Tuple[LTMRule, float]]:
